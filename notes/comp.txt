@@ -1,0 +1,11 @@
+import React from 'react';
+
+const SpinnerUI: React.FC = () =>{
+    return (
+        <>
+            SpinnerUI
+        </>
+    )
+}
+
+export default SpinnerUI;

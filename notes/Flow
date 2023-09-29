@@ -1,0 +1,7 @@
+In user Login Router:
+1) Validate the request
+2) destructure the request.body and retrive email and password
+3) check whether any user exist with given email ID if exits
+    store the details in a variable("user")
+4) Now compare the user.password and password. 
+5) Now generate token with the help of secret key and paylod(email + id) using sign function

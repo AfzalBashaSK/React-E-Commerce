@@ -1,0 +1,288 @@
+Cloudinary:
+Website URL: https://cloudinary.com/
+remember to use cloudnary i have to use my own mobile data not wifi.
+ uploadPreset = "jv1mtwey" 
+ cloudName = "dy5glvag9"
+
+ // add this script tag to index.html just above the above title of head section </body>
+ <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
+
+// this has to be declare globally i.e above functional componenet
+declare const window : Window &  
+typeof globalThis & {
+    cloudinary : {
+        createUploadWidget: (p: {},p1: (error:any, result: any) => void) => any
+    }
+}
+
+const cloudinaryRef = useRef<any>(); // cloudinaryRef is for above cloudinary object
+const widgetRef = useRef<any>(); // widgetRef is for uploading widget
+const [imageUrl,setImageUrl] = useState<string>("");
+
+useEffect(()=>{
+    // here global cloudinary object is accessed
+    cloudinaryRef.current = window.cloudinary;
+    /* here since global object is assigned to cloudinaryRef it is accessed by using object methods 
+        for widgetRef we assigned global method createUploadWidget.
+    */
+    widgetRef.current = cloudinaryRef?.current?.createUploadWidget({
+        cloudName : process.env.REACT_APP_CLOUDINARY_CLOUD_NAME,
+        uploadPreset : process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET
+    },(error : any,result : {event:string; info : {secure_url : any};})=>{
+        if(!error && result && result.event === "success"){
+            console.log("Done here is the image info: ",result.info);
+            console.log(result.info.secure_url); 
+            /*  secure url is the actual url */
+            /* Here setImageUrl will store the image in cloudinary and that url is passed inside of
+            updateProfileAction so that it will store in our database and displays image we
+            uploaded in cloudinary */
+            dispatch(userActions.updateProfilePictureAction(result.info.secure_url))
+            /* setImageUrl(result.info.secure_url); */
+        }
+    })
+},[])
+
+IN useReducer inside extra reducers ->
+
+// upload Profile Picture
+builder.addCase(userActions.updateProfilePictureAction.pending, (state) => {
+    state.loading = true;
+}).addCase(userActions.updateProfilePictureAction.fulfilled, (state, action) => {
+    state.loading = false;
+    state.user = action.payload?.user || {};
+    ToastUtil.displaySuccessToast("Profile Image is Uploaded");
+}).addCase(userActions.updateProfilePictureAction.rejected, (state, action) => {
+    state.loading = false;
+    if (isRejectedWithValue(action)) {
+        ToastUtil.displayErrorToast(`Profile Upload is Failed`)
+    }
+})
+
+IN userActions ->
+
+
+export const updateProfilePictureAction: any = createAsyncThunk("updateProfilePictureAction",
+    async (imageUrl: string, {rejectWithValue}) // async (payload:{imageUrl: string}, {rejectWithValue})
+    : Promise<{ user: UserView } | any> => {
+        /* async (payload: {data:{ user: UserView }}, {rejectWithValue}) because we are   catching data from service 
+            and Promise<{ user: UserView } | any>
+        */
+
+        try {
+            /*if AuthUtil.isSetTokenToHeader() returns true then it will enter into the loop.
+            it will become true when the user is loggedIn and user has the token.
+            If they didn't loggedIn and doesn't have token then we should not allow 
+            him/her to access the  user information. Thats y we used AuthUtil.isSetTokenToHeader()
+             this function. In this way of checking makes it PRIVATE METHOD */
+
+             
+            
+             //! The main thing is dispatch this action in App.tsx 
+            if (AuthUtil.isSetTokenToHeader()) {
+                const response = await UserService.UpdateProfilePicture(imageUrl);
+                return response.data;
+            }
+        } catch (error: any) {
+            if (!error.response) {
+                throw error
+            }
+            return rejectWithValue(error)
+        }
+    });
+
+
+In userService 
+
+// PRIVATE
+public static UpdateProfilePicture(imageUrl:string): Promise<{ data: { user: UserView } }> {
+    const dataUrl: string = `${this.serverUrl}/api/users/profile`;
+    return axios.post(dataUrl,{imageUrl}); // 
+    /* we should not pass string thats y imagerl is passed like object {imageUrl}
+        If u see user is an object. That's y in above loginUser itis provided directly as user but not like
+        {user}
+    */
+}
+
+
+-------------------------------------------------In Backend--------------------------------------------------
+
+/**
+ * @usage : Update Profile Picture
+ * @method : POST
+ * @url : http://localhost:9000/api/users/ofile
+ * @access : PRIVATE
+ * @param : imageUrl
+ * @param request
+ * @param response
+ */
+
+In userRoutes ->
+
+
+userRoutes.post('/profile',[
+    body("imageUrl").not().isEmpty().withMessage("Profile imageUrl is requred")
+],validateForm, authMiddleware, async (request: Request, response: Response) => {
+    await userController.updateProfilePicture(request, response);
+});
+
+
+In userController ->
+
+/**
+ * @usage : updateProfilePicture
+ * @param request 
+ * @param response
+ */
+
+export const updateProfilePicture = async (request: Request, response: Response) => {
+    try {
+
+        let {imageUrl} = request.body // read image url from form
+        const decodedToken: any = request.headers['user-info'];
+        if (decodedToken) {
+            const userId = decodedToken.id;
+            const mongoUserId = new mongoose.Types.ObjectId(userId);
+            const user: IUser | undefined | null | any = await UsersTable.findById(mongoUserId);
+            if (user) {
+                user.imageUrl = imageUrl;
+                let userResponse = await user.save();
+                if(userResponse){
+                    return response.status(200).json({user : user});
+                }   
+            }
+        }
+    } catch (error: any) {
+        return ErrorUtil.catchErrors(error,response)
+    }
+
+    In authMiddleware ->
+    export const authMiddleware = async (request: Request, response: Response, next: NextFunction) => {
+        try {
+            const token: any = request.headers['x-auth-token'];
+            if (!token) {
+                return response.status(401).json({msg: "No Token Provided"})
+            }
+            const secretKey: string | undefined = process.env.EXPRESS_JWT_SECRET_KEY;
+            if (secretKey) {
+                const decode: any = jwt.verify(token, secretKey, {algorithms: ["HS256"]});
+                if (decode) {
+                    request.headers['user-info'] = decode.user;
+                    next(); // forward to the router
+                } else {
+                    return response.status(401).json({msg: "Invalid Token Provided"})
+                }
+            }
+        } catch (error) {
+            return response.status(500).json({msg: "Token validation failed"})
+        }
+    };
+
+In ValidateForm ->
+
+export const  validateForm = async (request:Request,response: Response,next:NextFunction)=>{
+    const errors = validationResult(request);
+        if (!errors.isEmpty()) {
+            return response.status(400).json({
+                msg: errors.array().map(error => error.msg).join("\n"),
+                data: null,
+                status: APP_CONSTANTS.FAILED
+        })                
+    }
+    next();
+}
+
+------------------------------------------ Front End --------------------------------------------------
+
+import React, { useEffect, useRef, useState } from 'react';
+import FinalNavbar from '../../layout/pages/navbar/FinalNavBar';
+import LayoutHeading from '../../layout/components/layout-heading/LayoutHeading';
+import * as userReducer from "../../../redux/users/user.reducer"
+import { AppDispatch, RootState, useAppDispatch } from '../../../redux/store';
+import { useSelector } from 'react-redux';
+import { Button, Card, Col, Container, Row } from 'react-bootstrap';
+import * as userActions from "../../../redux/users/user.actions"
+import SpinnerUI from '../../ui/components/SpinnerUI';
+declare const window : Window &
+typeof globalThis & {
+    cloudinary : {
+        createUploadWidget: (p: {},p1: (error:any, result: any) => void) => any
+    }
+}
+
+const UserProfile: React.FC = () =>{
+    const dispatch: AppDispatch = useAppDispatch();
+
+    const cloudinaryRef = useRef<any>(); // cloudinaryRef is for above cloudinary object
+    const widgetRef = useRef<any>(); // widgetRef is for uploading widget
+    // const [imageUrl,setImageUrl] = useState<string>("");
+
+    const userState:userReducer.InitialState = useSelector((state: RootState)=>{
+        return state[userReducer.userFeatureKey]
+    }) 
+
+    let {isAuthenticated,user,loading} = userState;
+
+    useEffect(()=>{
+        // here global cloudinary object is accessed
+        cloudinaryRef.current = window.cloudinary;
+        /* here since global object is assigned to cloudinaryRef it is accessed by using object methods 
+            for widgetRef we assigned global method createUploadWidget.
+        */
+        widgetRef.current = cloudinaryRef?.current?.createUploadWidget({
+            cloudName : process.env.REACT_APP_CLOUDINARY_CLOUD_NAME,
+            uploadPreset : process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET
+        },(error : any,result : {event:string; info : {secure_url : any};})=>{
+            if(!error && result && result.event === "success"){
+                // console.log("Done here is the image info: ",result.info);
+                // console.log(result.info.secure_url); 
+                // secure url is the actual url
+                /* Here setImageUrl will store the image in cloudinary and that url is passed inside of
+                    updateProfileAction so that it will store in our database and displays image we
+                    uploaded in cloudinary */
+                dispatch(userActions.updateProfilePictureAction(result.info.secure_url))    
+                // setImageUrl(result.info.secure_url);
+            }
+        })
+    },[])
+
+    return (
+        <>
+            {loading && <SpinnerUI/>}
+            <FinalNavbar/>
+            {
+                user && Object.keys(user).length > 0 && 
+                <>
+                    <LayoutHeading heading={`${user.username}'s Profile`} color=' text-success' />
+                    <Container>
+                        <Row>
+                            <Col xs={3} >
+                                <Card className=' text-center'>
+                                    <img src={user.imageUrl} className=' img-fluid profile-img' alt="" />
+                                    <div className="">
+                                    <Button type='button' variant={'success'} className=' mt-1'
+                                    onClick={()=>widgetRef.current.open()}>Edit</Button>
+                                    </div>
+                                </Card>
+                                
+                            </Col>
+                        </Row>
+                        {/* <Row>
+                            <Col>
+                                {
+                                    imageUrl !== "" &&
+                                    <>
+                                        <pre>{imageUrl}</pre>
+                                        <img src={imageUrl} alt="" width={100} height={100} />
+                                    </>
+                                }
+                            </Col>
+                        </Row> */}
+                    </Container>
+                </>
+            }
+        </>
+    )
+}
+
+export default UserProfile;
+

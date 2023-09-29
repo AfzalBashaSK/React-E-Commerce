@@ -1,0 +1,9 @@
+ ResponseHandler = ErroUtil
+ sendErrors = CatchErrors
+ i changed data to user in usercontroller post
+ authMiddleware = tokenVerifier
+
+Cloudinary:
+remember to use cloudnary i have to use my own mobile data not wifi.
+ uploadPreset = "jv1mtwey" 
+ cloudname = "dy5glvag9"
